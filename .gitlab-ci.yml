@@ -6,6 +6,17 @@ stages:
   - build
   - test
 
+build:windows:
+  tags:
+    - windows
+  stage: build
+  script:
+    - cat /proc/version
+    - make release-static-win64
+  artifacts:
+    paths:
+      - "build/release/bin"
+
 build:osx:
   tags:
     - osx
