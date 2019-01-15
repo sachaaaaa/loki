@@ -161,7 +161,7 @@ namespace service_node {
       for (const auto& item : items) {
         response.m_body += "{";
         response.m_body += "\"hash\":\"" + item.hash + "\",";
-        response.m_body += "\"timestamp\":\"" + std::to_string(item.timestamp) + "\",";
+        response.m_body += "\"expiration\":\"" + std::to_string(item.expirationTimestamp) + "\",";
         response.m_body += "\"data\":\"" + item.bytes + "\"";
         response.m_body += "},";
       }
