@@ -135,7 +135,6 @@ namespace service_nodes
       if (version >= service_node_info::version_1_swarms)
       {
         VARINT_FIELD(swarm_id)
-        FIELD(assigned_to_swarm)
       }
       VARINT_FIELD(dummy)
     END_SERIALIZE()

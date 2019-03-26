@@ -24,7 +24,7 @@ namespace service_nodes {
   constexpr size_t   EXCESS_BASE                      = MIN_SWARM_SIZE;
   constexpr size_t   NEW_SWARM_SIZE                   = IDEAL_SWARM_SIZE;
   // The lower swarm percentile that will be randomly filled with new service nodes
-  constexpr size_t   FILL_SWARM_LOWER_PERCENTILE    = 25;
+  constexpr size_t   FILL_SWARM_LOWER_PERCENTILE      = 25;
   // The upper swarm percentile that will be randomly selected during stealing
   constexpr size_t   STEALING_SWARM_UPPER_PERCENTILE  = 25;
   constexpr int      MAX_KEY_IMAGES_PER_CONTRIBUTOR   = 1;
@@ -32,6 +32,7 @@ namespace service_nodes {
   constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
 
   using swarm_id_t = uint64_t;
+  constexpr swarm_id_t   UNASSIGNED_SWARM_ID          = UINT64_MAX;
 
 inline uint64_t staking_num_lock_blocks(cryptonote::network_type nettype)
 {
