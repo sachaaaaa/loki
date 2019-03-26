@@ -87,7 +87,8 @@ void registerInitialSnodes(swarm_snode_map_t& swarm_to_snodes, size_t reg_per_bl
     {
       unassigned_snodes.push_back(newPubKey());
     }
-    calc_swarm_changes(swarm_to_snodes, unassigned_snodes, i /* seed */);
+    swarm_to_snodes[UNASSIGNED_SWARM_ID] = unassigned_snodes;
+    calc_swarm_changes(swarm_to_snodes, i /* seed */);
     unassigned_snodes.clear();
     num_snodes += reg_per_block;
     LOG_PRINT_L2("num_snodes: " << num_snodes);
@@ -305,7 +306,7 @@ TEST(swarm_to_snodes, swarm_above_min_size_unaffects_other_swarms)
   {
     swarm_snode_map_t copy = swarm_to_snodes;
     swarm_to_snodes[first_id].pop_back();
-    calc_swarm_changes(swarm_to_snodes, {}, seed++);
+    calc_swarm_changes(swarm_to_snodes, seed++);
     ASSERT_TRUE(swarm_to_snodes.size() == copy.size());
     /// Ensure the other swarms are unaffected
     for (const auto& entry : swarm_to_snodes) {
@@ -325,7 +326,7 @@ TEST(swarm_to_snodes, swarm_above_min_size_unaffects_other_swarms)
     {
       swarm_to_snodes[second_id].pop_back();
     }
-    calc_swarm_changes(swarm_to_snodes, {}, seed++);
+    calc_swarm_changes(swarm_to_snodes, seed++);
     ASSERT_TRUE(swarm_to_snodes.size() == copy.size());
     /// Ensure the other swarms are unaffected
     for (const auto& entry : swarm_to_snodes) {
@@ -353,7 +354,7 @@ TEST(swarm_to_snodes, register_snode_fills_low_swarms)
   {
     swarm_to_snodes[first_id].pop_back();
     swarm_to_snodes[second_id].pop_back();
-    calc_swarm_changes(swarm_to_snodes, {}, seed++);
+    calc_swarm_changes(swarm_to_snodes, seed++);
   }
 
   /// Drop the 2 first swarm below the minimum size and provide 3 registrations
@@ -366,7 +367,8 @@ TEST(swarm_to_snodes, register_snode_fills_low_swarms)
   {
     unassigned_snodes.push_back(newPubKey());
   }
-  calc_swarm_changes(swarm_to_snodes, unassigned_snodes, seed++);
+  swarm_to_snodes[UNASSIGNED_SWARM_ID] = unassigned_snodes;
+  calc_swarm_changes(swarm_to_snodes, seed++);
   ASSERT_GT(swarm_to_snodes[first_id].size(), MIN_SWARM_SIZE - 1);
   ASSERT_GT(swarm_to_snodes[second_id].size(), MIN_SWARM_SIZE - 1);
 }
@@ -390,7 +392,7 @@ TEST(swarm_to_snodes, stealing_from_rich_swarms)
   {
     swarm_to_snodes[first_id].pop_back();
   }
-  calc_swarm_changes(swarm_to_snodes, {}, seed++);
+  calc_swarm_changes(swarm_to_snodes, seed++);
   /// the victim swarm size should be >= MIN_SWARM_SIZE
   ASSERT_GT(swarm_to_snodes[first_id].size(), MIN_SWARM_SIZE - 1);
 
@@ -427,7 +429,7 @@ TEST(swarm_to_snodes, decommission)
   /// Select a victim
   swarm_to_snodes.begin()->second.pop_back();
 
-  calc_swarm_changes(swarm_to_snodes, {}, seed++);
+  calc_swarm_changes(swarm_to_snodes, seed++);
   /// 1 swarm should have been decommissioned
   ASSERT_EQ(initial_num_swarms - 1, swarm_to_snodes.size());
 }

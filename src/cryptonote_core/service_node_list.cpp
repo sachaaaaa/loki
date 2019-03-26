@@ -418,18 +418,13 @@ namespace service_nodes
 
     /// Gather existing swarms from infos
     swarm_snode_map_t existing_swarms;
-    std::vector<crypto::public_key> unassigned_snodes;
 
     for (const auto& entry : m_service_nodes_infos) {
-      if (entry.second.assigned_to_swarm) {
-        const auto id = entry.second.swarm_id;
-        existing_swarms[id].push_back(entry.first);
-      } else {
-        unassigned_snodes.push_back(entry.first);
-      }
+      const auto id = entry.second.swarm_id;
+      existing_swarms[id].push_back(entry.first);
     }
 
-    calc_swarm_changes(existing_swarms, unassigned_snodes, seed);
+    calc_swarm_changes(existing_swarms, seed);
 
     /// Apply changes
     for (const auto entry : existing_swarms) {
@@ -440,12 +435,11 @@ namespace service_nodes
       for (const auto snode : snodes) {
 
         auto& sn_info = m_service_nodes_infos.at(snode);
-        if (sn_info.assigned_to_swarm && sn_info.swarm_id == swarm_id) continue; /// nothing changed for this snode
+        if (sn_info.swarm_id == swarm_id) continue; /// nothing changed for this snode
 
         /// modify info and record the change
         m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(height, snode, sn_info)));
         sn_info.swarm_id = swarm_id;
-        sn_info.assigned_to_swarm = true;
       }
 
     }
@@ -648,7 +642,7 @@ namespace service_nodes
     info.version = get_min_service_node_info_version_for_hf(hf_version);
 
     if (info.version >= service_node_info::version_1_swarms)
-      info.assigned_to_swarm = false;
+      info.swarm_id = UNASSIGNED_SWARM_ID;
 
     info.contributors.clear();
 

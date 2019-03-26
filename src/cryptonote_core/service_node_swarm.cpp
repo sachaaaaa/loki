@@ -47,52 +47,46 @@ namespace service_nodes
     return threshold;
   };
 
+  prod_static crypto::public_key steal_from_excess_pool(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt)
+  {
+    /// Create a pool of all the service nodes belonging
+    /// to the swarms that have excess. That way we naturally
+    /// make the chances of picking a swarm proportionate to the
+    /// swarm size.
+    std::vector<excess_pool_snode> excess_pool;
+    for (const auto &entry : swarm_to_snodes)
+    {
+      if (entry.second.size() > EXCESS_BASE)
+      {
+        for (const auto &sn_pk : entry.second)
+        {
+          excess_pool.push_back({sn_pk, entry.first});
+        }
+      }
+    }
+    /// Select random snode
+    const auto idx = uniform_distribution_portable(mt, excess_pool.size());
+    auto &random_excess = excess_pool.at(idx);
+    const auto random_sn_pk = random_excess.public_key;
+    const auto random_sn_swarm_id = random_excess.swarm_id;
+    LOG_PRINT_L2("Taking from swarm : " << random_sn_swarm_id);
+    /// Remove service node from swarm
+    auto &swarm_sn_vec = swarm_to_snodes.at(random_sn_swarm_id);
+    swarm_sn_vec.erase(std::remove(swarm_sn_vec.begin(), swarm_sn_vec.end(), random_sn_pk), swarm_sn_vec.end());
+    /// Add to new swarm
+   return random_sn_pk;
+  }
+
   prod_static void create_new_swarm_from_excess(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt)
   {
     while (calc_excess(swarm_to_snodes) >= calc_threshold(swarm_to_snodes))
     {
       LOG_PRINT_L2("New swarm creation");
       std::vector<crypto::public_key> new_swarm_snodes;
-      std::vector<excess_pool_snode> excess_pool;
-
-      for (const auto &entry : swarm_to_snodes)
-      {
-        if (entry.second.size() > EXCESS_BASE)
-        {
-          for (const auto &sn_pk : entry.second)
-          {
-            excess_pool.push_back({sn_pk, entry.first});
-          }
-        }
-      }
 
       while (new_swarm_snodes.size() < NEW_SWARM_SIZE)
       {
-        const auto idx = uniform_distribution_portable(mt, excess_pool.size());
-        auto &random_excess = excess_pool.at(idx);
-        const auto random_sn_pk = random_excess.public_key;
-        const auto random_sn_swarm_id = random_excess.swarm_id;
-        LOG_PRINT_L2("Taking from swarm : " << random_sn_swarm_id);
-        /// Remove service node from swarm
-        auto &swarm_sn_vec = swarm_to_snodes.at(random_sn_swarm_id);
-        swarm_sn_vec.erase(std::remove(swarm_sn_vec.begin(), swarm_sn_vec.end(), random_sn_pk), swarm_sn_vec.end());
-        if (swarm_sn_vec.size() <= EXCESS_BASE)
-        {
-          /// Remove the swarm's snodes from the pool
-          excess_pool.erase(std::remove_if(excess_pool.begin(),
-                                          excess_pool.end(),
-                                          [&](const excess_pool_snode &excess) {
-                                            return excess.swarm_id == random_sn_swarm_id;
-                                          }),
-                            excess_pool.end());
-        }
-        else
-        {
-          /// Remove only the one snode from the pool
-          excess_pool.erase(excess_pool.begin() + idx);
-        }
-
-        /// Add to new swarm
+        auto random_sn_pk = steal_from_excess_pool(swarm_to_snodes, mt);
         new_swarm_snodes.push_back(random_sn_pk);
       }
       const auto new_swarm_id = get_new_swarm_id(mt, swarm_to_snodes);
@@ -115,6 +109,8 @@ namespace service_nodes
               });
   }
 
+  /// Assign each snode from snode_pubkeys into the FILL_SWARM_LOWER_PERCENTILE percentile of swarms
+  /// and run the excess/threshold logic after each assignment to ensure new swarms are generated when required.
   prod_static void assign_snodes(const std::vector<crypto::public_key> &snode_pubkeys, swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt)
   {
     std::vector<swarm_size> sorted_swarm_sizes;
@@ -177,16 +173,23 @@ namespace service_nodes
     return deficit > 0 && excess > 0;
   };
 
-  void calc_swarm_changes(swarm_snode_map_t &swarm_to_snodes, const std::vector<crypto::public_key> &unassigned_snodes, uint64_t seed)
+  void calc_swarm_changes(swarm_snode_map_t &swarm_to_snodes, uint64_t seed)
   {
 
-    if (swarm_to_snodes.size() == 0 && unassigned_snodes.size() == 0)
+    if (swarm_to_snodes.size() == 0)
     {
       // nothing to do
       return;
     }
 
     std::mt19937_64 mersenne_twister(seed);
+
+    std::vector<crypto::public_key> unassigned_snodes;
+    const auto it = swarm_to_snodes.find(UNASSIGNED_SWARM_ID);
+    if (it != swarm_to_snodes.end()) {
+      unassigned_snodes = it->second;
+      swarm_to_snodes.erase(it);
+    }
 
     LOG_PRINT_L3("calc_swarm_changes. swarms: " << swarm_to_snodes.size() << ", regs: " << unassigned_snodes.size());
 
@@ -201,7 +204,7 @@ namespace service_nodes
     // TODO?
     /// Handle snodes in the buffer if any (one time process)
 
-    /// 1. Assign new registrated snodes
+    /// 1. Assign new registered snodes
     assign_snodes(unassigned_snodes, swarm_to_snodes, mersenne_twister);
     LOG_PRINT_L2("After assignment:");
     for (const auto &entry : swarm_to_snodes)

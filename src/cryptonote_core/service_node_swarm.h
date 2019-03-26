@@ -17,11 +17,12 @@ namespace service_nodes {
         swarm_id_t swarm_id;
     };
 
-    void calc_swarm_changes(swarm_snode_map_t& swarm_to_snodes, const std::vector<crypto::public_key>& unassigned_snodes, uint64_t seed);
+    void calc_swarm_changes(swarm_snode_map_t& swarm_to_snodes, uint64_t seed);
 
 #ifdef UNIT_TEST
     size_t calc_excess(const swarm_snode_map_t &swarm_to_snodes);
     size_t calc_threshold(const swarm_snode_map_t &swarm_to_snodes);
+    crypto::public_key steal_from_excess_pool(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt);
     void create_new_swarm_from_excess(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt);
     void calc_swarm_sizes(const swarm_snode_map_t &swarm_to_snodes, std::vector<swarm_size> &sorted_swarm_sizes);
     void assign_snodes(const std::vector<crypto::public_key> &snode_pubkeys, swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt);
