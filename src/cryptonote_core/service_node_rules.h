@@ -26,7 +26,7 @@ namespace service_nodes {
   // The lower swarm percentile that will be randomly filled with new service nodes
   constexpr size_t   FILL_SWARM_LOWER_PERCENTILE      = 25;
   // The upper swarm percentile that will be randomly selected during stealing
-  constexpr size_t   STEALING_SWARM_UPPER_PERCENTILE  = 25;
+  constexpr size_t   STEALING_SWARM_UPPER_PERCENTILE  = 75;
   constexpr int      MAX_KEY_IMAGES_PER_CONTRIBUTOR   = 1;
   constexpr uint64_t QUEUE_SWARM_ID                   = 0;
   constexpr uint64_t KEY_IMAGE_AWAITING_UNLOCK_HEIGHT = 0;
