@@ -47,34 +47,37 @@ namespace service_nodes
     return threshold;
   };
 
-  prod_static crypto::public_key steal_from_excess_pool(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt)
+  prod_static excess_pool_snode pick_from_excess_pool(const std::vector<excess_pool_snode>& excess_pool, std::mt19937_64 &mt)
+  {
+    /// Select random snode
+    const auto idx = uniform_distribution_portable(mt, excess_pool.size());
+    return excess_pool.at(idx);
+  }
+
+  prod_static bool remove_excess_snode_from_swarm(const excess_pool_snode& excess_snode, swarm_snode_map_t &swarm_to_snodes)
+  {
+    auto &swarm_sn_vec = swarm_to_snodes.at(excess_snode.swarm_id);
+    swarm_sn_vec.erase(std::remove(swarm_sn_vec.begin(), swarm_sn_vec.end(), excess_snode.public_key), swarm_sn_vec.end());
+  }
+
+  prod_static void get_excess_pool(size_t threshold, swarm_snode_map_t& swarm_to_snodes, std::vector<excess_pool_snode>& pool_snodes, size_t& excess)
   {
     /// Create a pool of all the service nodes belonging
     /// to the swarms that have excess. That way we naturally
     /// make the chances of picking a swarm proportionate to the
     /// swarm size.
-    std::vector<excess_pool_snode> excess_pool;
+    excess = 0;
     for (const auto &entry : swarm_to_snodes)
     {
-      if (entry.second.size() > EXCESS_BASE)
+      if (entry.second.size() > threshold)
       {
-        for (const auto &sn_pk : entry.second)
+        excess += entry.second.size() - MIN_SWARM_SIZE;
+        for (const auto& sn_pk : entry.second)
         {
-          excess_pool.push_back({sn_pk, entry.first});
+          pool_snodes.push_back({sn_pk, entry.first});
         }
       }
     }
-    /// Select random snode
-    const auto idx = uniform_distribution_portable(mt, excess_pool.size());
-    auto &random_excess = excess_pool.at(idx);
-    const auto random_sn_pk = random_excess.public_key;
-    const auto random_sn_swarm_id = random_excess.swarm_id;
-    LOG_PRINT_L2("Taking from swarm : " << random_sn_swarm_id);
-    /// Remove service node from swarm
-    auto &swarm_sn_vec = swarm_to_snodes.at(random_sn_swarm_id);
-    swarm_sn_vec.erase(std::remove(swarm_sn_vec.begin(), swarm_sn_vec.end(), random_sn_pk), swarm_sn_vec.end());
-    /// Add to new swarm
-   return random_sn_pk;
   }
 
   prod_static void create_new_swarm_from_excess(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt)
@@ -86,8 +89,12 @@ namespace service_nodes
 
       while (new_swarm_snodes.size() < NEW_SWARM_SIZE)
       {
-        auto random_sn_pk = steal_from_excess_pool(swarm_to_snodes, mt);
-        new_swarm_snodes.push_back(random_sn_pk);
+        std::vector<excess_pool_snode> pool_snodes;
+        size_t excess;
+        get_excess_pool(EXCESS_BASE, swarm_to_snodes, pool_snodes, excess);
+        const auto random_excess_snode = pick_from_excess_pool(pool_snodes, mt);
+        new_swarm_snodes.push_back(random_excess_snode.public_key);
+        remove_excess_snode_from_swarm(random_excess_snode, swarm_to_snodes);
       }
       const auto new_swarm_id = get_new_swarm_id(mt, swarm_to_snodes);
       swarm_to_snodes.insert({new_swarm_id, std::move(new_swarm_snodes)});
@@ -121,7 +128,7 @@ namespace service_nodes
       const size_t percentile_value = sorted_swarm_sizes.at(percentile_index).size;
       /// Find last occurence of percentile_value
       size_t upper_index = sorted_swarm_sizes.size() - 1;
-      for (size_t i = 0; i < sorted_swarm_sizes.size(); ++i)
+      for (size_t i = percentile_index; i < sorted_swarm_sizes.size(); ++i)
       {
         if (sorted_swarm_sizes[i].size > percentile_value)
         {
@@ -137,41 +144,6 @@ namespace service_nodes
       create_new_swarm_from_excess(swarm_to_snodes, mt);
     }
   }
-
-  /// This function needs to be called after each single snode is stolen
-  prod_static bool calc_robin_hood_round(const swarm_snode_map_t &swarm_to_snodes, std::vector<excess_pool_snode> &rich_snodes, std::vector<swarm_id_t> &poor_swarm_ids)
-  {
-    std::vector<swarm_size> sorted_swarm_sizes;
-    calc_swarm_sizes(swarm_to_snodes, sorted_swarm_sizes);
-    rich_snodes.clear();
-    poor_swarm_ids.clear();
-    const size_t rich_percentile_index = STEALING_SWARM_UPPER_PERCENTILE * (sorted_swarm_sizes.size() - 1) / 100;
-    size_t rich_percentile_value = sorted_swarm_sizes.at(rich_percentile_index).size;
-    /// MIN_SWARM_SIZE + 1 because we don't want to steal from snodes that would starve if we do so
-    rich_percentile_value = std::max(MIN_SWARM_SIZE, rich_percentile_value);
-    size_t deficit = 0;
-    size_t excess = 0;
-    for (const auto &entry : swarm_to_snodes)
-    {
-      const size_t swarm_size = entry.second.size();
-      if (swarm_size < MIN_SWARM_SIZE)
-      {
-        deficit += MIN_SWARM_SIZE - swarm_size;
-        poor_swarm_ids.push_back(entry.first);
-      }
-      else if (swarm_size > rich_percentile_value)
-      {
-        excess += swarm_size - rich_percentile_value;
-        for (const auto &sn_pk : entry.second)
-        {
-          rich_snodes.push_back({sn_pk, entry.first});
-        }
-      }
-    }
-    /// We only try to fill one starving swarm at a time, with 1 snode
-    /// So it's ok if there is more deficit than excess
-    return deficit > 0 && excess > 0;
-  };
 
   void calc_swarm_changes(swarm_snode_map_t &swarm_to_snodes, uint64_t seed)
   {
@@ -201,9 +173,6 @@ namespace service_nodes
       LOG_PRINT_L2("Created initial swarm " << new_swarm_id);
     }
 
-    // TODO?
-    /// Handle snodes in the buffer if any (one time process)
-
     /// 1. Assign new registered snodes
     assign_snodes(unassigned_snodes, swarm_to_snodes, mersenne_twister);
     LOG_PRINT_L2("After assignment:");
@@ -214,23 +183,41 @@ namespace service_nodes
 
     /// 2. *Robin Hood Round* steal snodes from wealthy swarms and give them to the poor
     {
-      std::vector<swarm_id_t> poor_swarms_ids;
-      std::vector<excess_pool_snode> rich_snodes;
-      while (calc_robin_hood_round(swarm_to_snodes, rich_snodes, poor_swarms_ids))
+      std::vector<swarm_size> sorted_swarm_sizes;
+      calc_swarm_sizes(swarm_to_snodes, sorted_swarm_sizes);
+      bool insufficient_excess = false;
+      for (const auto& swarm : sorted_swarm_sizes)
       {
-        LOG_PRINT_L2("Robin Hood Round");
-        const auto random_rich_sn_idx = uniform_distribution_portable(mersenne_twister, rich_snodes.size());
-        const auto random_rich_sn_pk = rich_snodes[random_rich_sn_idx].public_key;
-        const auto random_rich_swarm_id = rich_snodes[random_rich_sn_idx].swarm_id;
-        /// Remove public key from rich swarm
-        auto &swarm_snodes_vec = swarm_to_snodes.at(random_rich_swarm_id);
-        swarm_snodes_vec.erase(std::remove(swarm_snodes_vec.begin(), swarm_snodes_vec.end(), random_rich_sn_pk), swarm_snodes_vec.end());
-        /// Add public key to poor swarm
-        const auto random_poor_swarm_idx = uniform_distribution_portable(mersenne_twister, poor_swarms_ids.size());
-        const auto random_poor_swarm_id = poor_swarms_ids[random_poor_swarm_idx];
-        swarm_to_snodes.at(random_poor_swarm_id).push_back(random_rich_sn_pk);
+        /// we have processed all the starving swarms
+        if (swarm.size >= MIN_SWARM_SIZE)
+          break;
 
-        LOG_PRINT_L2("Stolen 1 snode from " << random_rich_swarm_id << " and donated to " << random_poor_swarm_id);
+        auto& poor_swarm_snodes = swarm_to_snodes.at(swarm.swarm_id);
+        do
+        {
+          const size_t percentile_index = STEALING_SWARM_UPPER_PERCENTILE * (sorted_swarm_sizes.size() - 1) / 100;
+          /// -1 since we will only consider swarm sizes strictly above percentile_value
+          size_t percentile_value = sorted_swarm_sizes.at(percentile_index).size - 1;
+          percentile_value = std::max(MIN_SWARM_SIZE, percentile_value);
+          size_t excess;
+          std::vector<excess_pool_snode> excess_pool;
+          get_excess_pool(percentile_value, swarm_to_snodes, excess_pool, excess);
+          /// If we can't save the swarm, don't bother continuing
+          const size_t deficit = MIN_SWARM_SIZE - poor_swarm_snodes.size();
+          insufficient_excess = (excess < deficit);
+          if (insufficient_excess)
+            break;
+          const auto excess_snode = pick_from_excess_pool(excess_pool, mersenne_twister);
+          remove_excess_snode_from_swarm(excess_snode, swarm_to_snodes);
+          /// Add public key to poor swarm
+          poor_swarm_snodes.push_back(excess_snode.public_key);
+          LOG_PRINT_L2("Stolen 1 snode from " << excess_snode.public_key << " and donated to " << swarm.swarm_id);
+        } while (poor_swarm_snodes.size() < MIN_SWARM_SIZE);
+
+        /// If there is not enough excess for the current swarm,
+        /// there isn't either for the next one since the swarms are sorted
+        if (insufficient_excess)
+          break;
       }
     }
 

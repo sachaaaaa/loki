@@ -216,56 +216,6 @@ TEST(swarm_to_snodes, assign_snodes)
 
 }
 
-TEST(swarm_to_snodes, calc_robin_hood_round)
-{
-  /// No poor nor rich swarms
-  swarm_snode_map_t swarm_to_snodes = {
-    {0, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}},
-    {1, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}}
-  };
-  std::vector<excess_pool_snode> rich_snodes;
-  std::vector<swarm_id_t> poor_swarm_ids;
-  ASSERT_FALSE(calc_robin_hood_round(swarm_to_snodes, rich_snodes, poor_swarm_ids));
-  ASSERT_EQ(0, rich_snodes.size());
-  ASSERT_EQ(0, poor_swarm_ids.size());
-  /// 0 rich 1 poor
-  swarm_to_snodes = {
-    {0, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}},
-    {1, {newPubKey(), newPubKey(), newPubKey(), newPubKey()}}
-  };
-  ASSERT_FALSE(calc_robin_hood_round(swarm_to_snodes, rich_snodes, poor_swarm_ids));
-  ASSERT_EQ(0, rich_snodes.size());
-  ASSERT_EQ(1, poor_swarm_ids.size());
-  ASSERT_EQ(1, poor_swarm_ids[0]);
-  /// 2 rich 0 poor
-  swarm_to_snodes = {
-    {0, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}},
-    {1, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}},
-    {2, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}}
-  };
-  ASSERT_FALSE(calc_robin_hood_round(swarm_to_snodes, rich_snodes, poor_swarm_ids));
-  ASSERT_EQ(swarm_to_snodes[0].size() + swarm_to_snodes[1].size(), rich_snodes.size());
-  ASSERT_EQ(0, poor_swarm_ids.size());
-  /// 1 rich 1 poor
-  swarm_to_snodes = {
-    {0, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}},
-    {1, {newPubKey(), newPubKey(), newPubKey(), newPubKey()}}
-  };
-  ASSERT_TRUE(calc_robin_hood_round(swarm_to_snodes, rich_snodes, poor_swarm_ids));
-  ASSERT_EQ(swarm_to_snodes[0].size(), rich_snodes.size());
-  ASSERT_EQ(1, poor_swarm_ids.size());
-  ASSERT_EQ(1, poor_swarm_ids[0]);
-  /// 1 rich 2 poor
-  swarm_to_snodes = {
-    {0, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}},
-    {1, {newPubKey(), newPubKey(), newPubKey(), newPubKey()}},
-    {2, {newPubKey(), newPubKey(), newPubKey(), newPubKey()}}
-  };
-  ASSERT_TRUE(calc_robin_hood_round(swarm_to_snodes, rich_snodes, poor_swarm_ids));
-  ASSERT_EQ(swarm_to_snodes[0].size(), rich_snodes.size());
-  ASSERT_EQ(2, poor_swarm_ids.size());
-}
-
 TEST(swarm_to_snodes, register_snodes_one_by_one)
 {
   const size_t expected_total_num_swarms = 40;
