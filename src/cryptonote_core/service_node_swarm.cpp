@@ -47,7 +47,7 @@ namespace service_nodes
     return threshold;
   };
 
-  prod_static excess_pool_snode pick_from_excess_pool(const std::vector<excess_pool_snode>& excess_pool, std::mt19937_64 &mt)
+  prod_static const excess_pool_snode& pick_from_excess_pool(const std::vector<excess_pool_snode>& excess_pool, std::mt19937_64 &mt)
   {
     /// Select random snode
     const auto idx = uniform_distribution_portable(mt, excess_pool.size());
@@ -57,7 +57,9 @@ namespace service_nodes
   prod_static bool remove_excess_snode_from_swarm(const excess_pool_snode& excess_snode, swarm_snode_map_t &swarm_to_snodes)
   {
     auto &swarm_sn_vec = swarm_to_snodes.at(excess_snode.swarm_id);
+    const size_t original_size = swarm_sn_vec.size();
     swarm_sn_vec.erase(std::remove(swarm_sn_vec.begin(), swarm_sn_vec.end(), excess_snode.public_key), swarm_sn_vec.end());
+    return original_size != swarm_sn_vec.size();
   }
 
   prod_static void get_excess_pool(size_t threshold, swarm_snode_map_t& swarm_to_snodes, std::vector<excess_pool_snode>& pool_snodes, size_t& excess)
@@ -66,6 +68,7 @@ namespace service_nodes
     /// to the swarms that have excess. That way we naturally
     /// make the chances of picking a swarm proportionate to the
     /// swarm size.
+    pool_snodes.clear();
     excess = 0;
     for (const auto &entry : swarm_to_snodes)
     {
@@ -92,7 +95,12 @@ namespace service_nodes
         std::vector<excess_pool_snode> pool_snodes;
         size_t excess;
         get_excess_pool(EXCESS_BASE, swarm_to_snodes, pool_snodes, excess);
-        const auto random_excess_snode = pick_from_excess_pool(pool_snodes, mt);
+        if (pool_snodes.size() == 0)
+        {
+          MERROR("Error while getting excess pool for new swarm creation");
+          return;
+        }
+        const auto& random_excess_snode = pick_from_excess_pool(pool_snodes, mt);
         new_swarm_snodes.push_back(random_excess_snode.public_key);
         remove_excess_snode_from_swarm(random_excess_snode, swarm_to_snodes);
       }
@@ -207,7 +215,7 @@ namespace service_nodes
           insufficient_excess = (excess < deficit);
           if (insufficient_excess)
             break;
-          const auto excess_snode = pick_from_excess_pool(excess_pool, mersenne_twister);
+          const auto& excess_snode = pick_from_excess_pool(excess_pool, mersenne_twister);
           remove_excess_snode_from_swarm(excess_snode, swarm_to_snodes);
           /// Add public key to poor swarm
           poor_swarm_snodes.push_back(excess_snode.public_key);
