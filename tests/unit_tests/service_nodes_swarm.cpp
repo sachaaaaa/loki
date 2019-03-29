@@ -240,6 +240,126 @@ TEST(swarm_to_snodes, register_snodes_in_bulk)
   }
 }
 
+
+TEST(swarm_to_snodes, get_excess_pool)
+{
+  swarm_snode_map_t swarm_to_snodes;
+
+  std::vector<excess_pool_snode> pool_snodes;
+  size_t excess;
+  /// First swarm up to MIN_SWARM_SIZE
+  for (size_t i = 0; i < MIN_SWARM_SIZE; ++i)
+  {
+    swarm_to_snodes[0].push_back(newPubKey());
+    get_excess_pool(MIN_SWARM_SIZE, swarm_to_snodes, pool_snodes, excess);
+    ASSERT_EQ(0, excess);
+    ASSERT_EQ(0, pool_snodes.size());
+  }
+
+  /// Second swarm up to MIN_SWARM_SIZE
+  for (size_t i = 0; i < MIN_SWARM_SIZE; ++i)
+  {
+    swarm_to_snodes[1].push_back(newPubKey());
+    get_excess_pool(MIN_SWARM_SIZE, swarm_to_snodes, pool_snodes, excess);
+    ASSERT_EQ(0, excess);
+    ASSERT_EQ(0, pool_snodes.size());
+  }
+
+  /// add excess in first swarm
+  const size_t first_swarm_excess = 10;
+  const size_t second_swarm_excess = 10;
+  for (size_t i = 0; i < first_swarm_excess; ++i)
+  {
+    swarm_to_snodes[0].push_back(newPubKey());
+    get_excess_pool(MIN_SWARM_SIZE, swarm_to_snodes, pool_snodes, excess);
+    ASSERT_EQ(i + 1, excess);
+    ASSERT_EQ(MIN_SWARM_SIZE + i + 1, pool_snodes.size());
+  }
+  /// add excess in second swarm
+  for (size_t i = 0; i < second_swarm_excess; ++i)
+  {
+    swarm_to_snodes[1].push_back(newPubKey());
+    get_excess_pool(MIN_SWARM_SIZE, swarm_to_snodes, pool_snodes, excess);
+    ASSERT_EQ(first_swarm_excess + i + 1, excess);
+    ASSERT_EQ(MIN_SWARM_SIZE * 2 + first_swarm_excess + i + 1, pool_snodes.size());
+  }
+
+  /// Third swarm up to MIN_SWARM_SIZE
+  /// Check that none of the snodes in swarm 3 are in the pool
+  for (size_t i = 0; i < MIN_SWARM_SIZE; ++i)
+  {
+    const auto pubKey = newPubKey();
+    swarm_to_snodes[3].push_back(pubKey);
+    get_excess_pool(MIN_SWARM_SIZE, swarm_to_snodes, pool_snodes, excess);
+    const auto it = std::find_if(pool_snodes.begin(), pool_snodes.end(), [&](const excess_pool_snode& excess_snode) {
+        return excess_snode.public_key == pubKey;
+      });
+    ASSERT_TRUE(it == pool_snodes.end());
+    ASSERT_EQ(first_swarm_excess + second_swarm_excess, excess);
+  }
+}
+
+TEST(swarm_to_snodes, pick_from_excess_pool)
+{
+  std::mt19937_64 mt(123456);
+
+  const std::vector<excess_pool_snode> excess_pool = {
+    { newPubKey(), 0},
+    { newPubKey(), 0},
+    { newPubKey(), 0},
+    { newPubKey(), 0},
+    { newPubKey(), 0},
+    { newPubKey(), 0},
+    { newPubKey(), 1},
+    { newPubKey(), 1},
+    { newPubKey(), 1},
+    { newPubKey(), 1},
+    { newPubKey(), 1}
+  };
+  /// (it is implicilty assumed that excess_pool is never empty)
+  const auto& random_excess_snode = pick_from_excess_pool(excess_pool, mt);
+  ASSERT_TRUE(std::find_if(excess_pool.begin(), excess_pool.end(), [random_excess_snode](const excess_pool_snode& snode){
+    return snode.public_key == random_excess_snode.public_key;
+  }) != excess_pool.end());
+}
+
+TEST(swarm_to_snodes, remove_excess_snode_from_swarm)
+{
+  swarm_snode_map_t swarm_to_snodes = {
+    {0, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}},
+    {1, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}},
+    {2, {newPubKey(), newPubKey(), newPubKey(), newPubKey(), newPubKey()}}
+  };
+
+  const auto& first_swarm = swarm_to_snodes[0];
+
+  std::vector<excess_pool_snode> pool_snodes = {
+    {first_swarm[0], 0},
+    {first_swarm[1], 0},
+    {first_swarm[2], 0},
+    {first_swarm[3], 0},
+    {first_swarm[4], 0},
+    {first_swarm[5], 0}
+  };
+
+  /// when snode exists in swarm_to_snodes
+  auto& excess_snode = pool_snodes[0];
+  ASSERT_TRUE(remove_excess_snode_from_swarm(excess_snode, swarm_to_snodes));
+  /// should be removed from first swarm
+  ASSERT_TRUE(std::find(first_swarm.begin(), first_swarm.end(), excess_snode.public_key) == first_swarm.end());
+  /// other swarms untouched
+  ASSERT_EQ(5, swarm_to_snodes[1].size());
+  ASSERT_EQ(5, swarm_to_snodes[2].size());
+
+  /// when snode doesn't exist in swarm_to_snodes
+  const excess_pool_snode new_snode = {newPubKey(), 2};
+  ASSERT_FALSE(remove_excess_snode_from_swarm(new_snode, swarm_to_snodes));
+  /// other swarms untouched
+  ASSERT_EQ(5, swarm_to_snodes[0].size());
+  ASSERT_EQ(5, swarm_to_snodes[1].size());
+  ASSERT_EQ(5, swarm_to_snodes[2].size());
+}
+
 TEST(swarm_to_snodes, swarm_above_min_size_unaffects_other_swarms)
 {
   swarm_snode_map_t swarm_to_snodes;
