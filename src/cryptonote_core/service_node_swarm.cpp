@@ -69,6 +69,10 @@ namespace service_nodes
     /// make the chances of picking a swarm proportionate to the
     /// swarm size.
     pool_snodes.clear();
+
+    if (threshold < MIN_SWARM_SIZE)
+      return;
+
     excess = 0;
     for (const auto &entry : swarm_to_snodes)
     {
