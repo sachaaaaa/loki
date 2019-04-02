@@ -206,11 +206,11 @@ TEST(swarm_to_snodes, assign_snodes)
   };
   std::mt19937_64 mt(42);
   /// should fill swarm 1 since it's the only one if the lowest 25 percentile
-  assign_snodes({ newPubKey() }, swarm_to_snodes, mt);
+  assign_snodes({ newPubKey() }, swarm_to_snodes, mt, FILL_SWARM_LOWER_PERCENTILE);
   ASSERT_EQ(2, swarm_to_snodes[1].size());
   /// should fill swarm 1 and 3
-  assign_snodes({ newPubKey() }, swarm_to_snodes, mt);
-  assign_snodes({ newPubKey() }, swarm_to_snodes, mt);
+  assign_snodes({ newPubKey() }, swarm_to_snodes, mt, FILL_SWARM_LOWER_PERCENTILE);
+  assign_snodes({ newPubKey() }, swarm_to_snodes, mt, FILL_SWARM_LOWER_PERCENTILE);
   ASSERT_EQ(3, swarm_to_snodes[1].size());
   ASSERT_EQ(3, swarm_to_snodes[3].size());
 

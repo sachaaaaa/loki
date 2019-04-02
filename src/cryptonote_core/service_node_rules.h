@@ -25,6 +25,8 @@ namespace service_nodes {
   constexpr size_t   NEW_SWARM_SIZE                   = IDEAL_SWARM_SIZE;
   // The lower swarm percentile that will be randomly filled with new service nodes
   constexpr size_t   FILL_SWARM_LOWER_PERCENTILE      = 25;
+  // Redistribute decommissioned snodes to the smallest swarms
+  constexpr size_t   DECOMMISSIONED_REDISTRIBUTION_LOWER_PERCENTILE = 0;
   // The upper swarm percentile that will be randomly selected during stealing
   constexpr size_t   STEALING_SWARM_UPPER_PERCENTILE  = 75;
   constexpr int      MAX_KEY_IMAGES_PER_CONTRIBUTOR   = 1;

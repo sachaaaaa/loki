@@ -62,7 +62,7 @@ namespace service_nodes
     return original_size != swarm_sn_vec.size();
   }
 
-  prod_static void get_excess_pool(size_t threshold, swarm_snode_map_t& swarm_to_snodes, std::vector<excess_pool_snode>& pool_snodes, size_t& excess)
+  prod_static void get_excess_pool(size_t threshold, const swarm_snode_map_t& swarm_to_snodes, std::vector<excess_pool_snode>& pool_snodes, size_t& excess)
   {
     /// Create a pool of all the service nodes belonging
     /// to the swarms that have excess. That way we naturally
@@ -89,10 +89,20 @@ namespace service_nodes
 
   prod_static void create_new_swarm_from_excess(swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt)
   {
+    const bool has_starving_swarms = std::any_of(swarm_to_snodes.begin(),
+                                                swarm_to_snodes.end(),
+                                                [](const swarm_snode_map_t::value_type& pair) {
+                                                  return pair.second.size() < MIN_SWARM_SIZE;
+                                                });
+    if (has_starving_swarms)
+      return;
+
     while (calc_excess(swarm_to_snodes) >= calc_threshold(swarm_to_snodes))
     {
       LOG_PRINT_L2("New swarm creation");
       std::vector<crypto::public_key> new_swarm_snodes;
+
+      new_swarm_snodes.reserve(NEW_SWARM_SIZE);
 
       while (new_swarm_snodes.size() < NEW_SWARM_SIZE)
       {
@@ -117,6 +127,7 @@ namespace service_nodes
   prod_static void calc_swarm_sizes(const swarm_snode_map_t &swarm_to_snodes, std::vector<swarm_size> &sorted_swarm_sizes)
   {
     sorted_swarm_sizes.clear();
+    sorted_swarm_sizes.reserve(swarm_to_snodes.size());
     for (const auto &entry : swarm_to_snodes)
     {
       sorted_swarm_sizes.push_back({entry.first, entry.second.size()});
@@ -130,13 +141,13 @@ namespace service_nodes
 
   /// Assign each snode from snode_pubkeys into the FILL_SWARM_LOWER_PERCENTILE percentile of swarms
   /// and run the excess/threshold logic after each assignment to ensure new swarms are generated when required.
-  prod_static void assign_snodes(const std::vector<crypto::public_key> &snode_pubkeys, swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt)
+  prod_static void assign_snodes(const std::vector<crypto::public_key> &snode_pubkeys, swarm_snode_map_t &swarm_to_snodes, std::mt19937_64 &mt, size_t percentile)
   {
     std::vector<swarm_size> sorted_swarm_sizes;
     for (const auto &sn_pk : snode_pubkeys)
     {
       calc_swarm_sizes(swarm_to_snodes, sorted_swarm_sizes);
-      const size_t percentile_index = FILL_SWARM_LOWER_PERCENTILE * (sorted_swarm_sizes.size() - 1) / 100;
+      const size_t percentile_index = percentile * (sorted_swarm_sizes.size() - 1) / 100;
       const size_t percentile_value = sorted_swarm_sizes.at(percentile_index).size;
       /// Find last occurence of percentile_value
       size_t upper_index = sorted_swarm_sizes.size() - 1;
@@ -186,7 +197,7 @@ namespace service_nodes
     }
 
     /// 1. Assign new registered snodes
-    assign_snodes(unassigned_snodes, swarm_to_snodes, mersenne_twister);
+    assign_snodes(unassigned_snodes, swarm_to_snodes, mersenne_twister, FILL_SWARM_LOWER_PERCENTILE);
     LOG_PRINT_L2("After assignment:");
     for (const auto &entry : swarm_to_snodes)
     {
@@ -239,26 +250,24 @@ namespace service_nodes
     /// 4. If there is a swarm with less than MIN_SWARM_SIZE, decommission that swarm.
     if (swarm_to_snodes.size() > 1)
     {
-      std::vector<crypto::public_key> decommissioned_snodes;
-      for (auto it = swarm_to_snodes.cbegin(); it != swarm_to_snodes.cend();)
+      while (true)
       {
-        if (it->second.size() < MIN_SWARM_SIZE)
-        {
-          MWARNING("swarm " << it->first << " is DECOMMISSIONED");
-          /// Copy all snode public keys for later
-          decommissioned_snodes.insert(decommissioned_snodes.begin(), it->second.begin(), it->second.end());
-          /// Remove swarm from map
-          it = swarm_to_snodes.erase(it);
-        }
-        else
-        {
-          it++;
-        }
-      }
-      /// Assign orphan pubkeys only after the decommissioned swarms has been removed from the map
-      if (decommissioned_snodes.size() > 0)
-      {
-        assign_snodes(decommissioned_snodes, swarm_to_snodes, mersenne_twister);
+        auto it = std::find_if(swarm_to_snodes.begin(),
+                              swarm_to_snodes.end(),
+                              [](const swarm_snode_map_t::value_type& pair) {
+                                return pair.second.size() < MIN_SWARM_SIZE;
+                              });
+        if (it == swarm_to_snodes.end())
+          break;
+
+        MWARNING("swarm " << it->first << " is DECOMMISSIONED");
+        /// Good ol' switcheroo
+        std::vector<crypto::public_key> decommissioned_snodes;
+        std::swap(decommissioned_snodes, it->second);
+        /// Remove swarm from map
+        swarm_to_snodes.erase(it);
+        /// Assign snodes to the 0 percentile, i.e. the smallest swarms
+        assign_snodes(decommissioned_snodes, swarm_to_snodes, mersenne_twister, DECOMMISSIONED_REDISTRIBUTION_LOWER_PERCENTILE);
       }
     }
 

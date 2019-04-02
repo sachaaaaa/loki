@@ -111,7 +111,6 @@ namespace service_nodes
     uint64_t                           staking_requirement;
     uint64_t                           portions_for_operator;
     swarm_id_t                         swarm_id;
-    bool                               assigned_to_swarm;
     cryptonote::account_public_address operator_address;
 
     service_node_info() = default;
