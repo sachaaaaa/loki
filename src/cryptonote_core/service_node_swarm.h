@@ -17,7 +17,7 @@ namespace service_nodes {
         swarm_id_t swarm_id;
     };
 
-    void calc_swarm_changes(swarm_snode_map_t& swarm_to_snodes, uint64_t seed);
+    void calc_swarm_changes(swarm_snode_map_t& swarm_to_snodes, uint64_t seed, size_t* num_stealing = nullptr);
 
 #ifdef UNIT_TEST
     size_t calc_excess(const swarm_snode_map_t &swarm_to_snodes);

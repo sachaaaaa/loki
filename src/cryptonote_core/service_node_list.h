@@ -34,6 +34,8 @@
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/service_node_deregister.h"
 
+#include <fstream>
+
 namespace service_nodes
 {
   class quorum_cop;
@@ -322,7 +324,7 @@ namespace service_nodes
     // Note(maxim): private methods don't have to be protected the mutex
     bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index);
     void process_contribution_tx(const cryptonote::transaction& tx, uint64_t block_height, uint32_t index);
-    bool process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height);
+    bool process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pubkey);
 
     std::vector<crypto::public_key> get_service_nodes_pubkeys() const;
 
@@ -353,7 +355,7 @@ namespace service_nodes
 
     std::vector<key_image_blacklist_entry> m_key_image_blacklist;
     std::map<block_height, std::shared_ptr<const quorum_state>> m_quorum_states;
-
+    std::ofstream m_output_stream;
   };
 
   bool reg_tx_extract_fields(const cryptonote::transaction& tx, std::vector<cryptonote::account_public_address>& addresses, uint64_t& portions_for_operator, std::vector<uint64_t>& portions, uint64_t& expiration_timestamp, crypto::public_key& service_node_key, crypto::signature& signature, crypto::public_key& tx_pub_key);

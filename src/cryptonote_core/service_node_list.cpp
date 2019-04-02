@@ -62,6 +62,8 @@ namespace service_nodes
   service_node_list::service_node_list(cryptonote::Blockchain& blockchain)
     : m_blockchain(blockchain), m_hooks_registered(false), m_height(0), m_db(nullptr), m_service_node_pubkey(nullptr)
   {
+    const std::string filepath = tools::get_default_data_dir() + "/export/service_nodes_events.txt";
+    m_output_stream.open(filepath, std::ios_base::out | std::ios::trunc);
   }
 
   void service_node_list::register_hooks(service_nodes::quorum_cop &quorum_cop)
@@ -298,7 +300,7 @@ namespace service_nodes
     return money_transferred;
   }
 
-  bool service_node_list::process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height)
+  bool service_node_list::process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height, crypto::public_key& pubkey)
   {
     if (tx.get_type() != cryptonote::transaction::type_deregister)
       return false;
@@ -326,6 +328,8 @@ namespace service_nodes
     }
 
     const crypto::public_key& key = state->nodes_to_test[deregister.service_node_index];
+    MGINFO_RED("copying bytes" << sizeof (crypto::public_key));
+    memcpy (&pubkey, &key, sizeof (crypto::public_key)) ;
 
     auto iter = m_service_nodes_infos.find(key);
     if (iter == m_service_nodes_infos.end())
@@ -889,6 +893,7 @@ namespace service_nodes
         m_rollback_events.push_back(std::unique_ptr<rollback_event>(new rollback_change(block_height, pubkey, i->second)));
 
         expired_count++;
+        m_output_stream << block_height << "\texpire\t" << epee::string_tools::pod_to_hex(pubkey) << '\n';
         m_service_nodes_infos.erase(i);
       }
     }
@@ -920,17 +925,28 @@ namespace service_nodes
     {
       const cryptonote::transaction& tx             = txs[index];
       const cryptonote::transaction::type_t tx_type = tx.get_type();
+
+      crypto::public_key snode_key;
+      cryptonote::get_service_node_pubkey_from_tx_extra(tx.extra, snode_key);
+
       if (tx_type == cryptonote::transaction::type_standard)
       {
         if (process_registration_tx(tx, block.timestamp, block_height, index))
+        {
+          m_output_stream << block_height << "\tregistration\t" <<  epee::string_tools::pod_to_hex(snode_key) <<'\n';
           registrations++;
+        }
 
         process_contribution_tx(tx, block_height, index);
       }
       else if (tx_type == cryptonote::transaction::type_deregister)
       {
-        if (process_deregistration_tx(tx, block_height))
+        crypto::public_key key;
+        if (process_deregistration_tx(tx, block_height, key))
+        {
+          m_output_stream << block_height << "\tderegistration\t" <<   epee::string_tools::pod_to_hex(key) <<'\n';
           deregistrations++;
+        }
       }
       else if (tx_type == cryptonote::transaction::type_key_image_unlock)
       {
@@ -988,6 +1004,7 @@ namespace service_nodes
 
     if (registrations || deregistrations || expired_count) {
       update_swarms(block_height);
+      m_output_stream.flush();
     }
 
     //

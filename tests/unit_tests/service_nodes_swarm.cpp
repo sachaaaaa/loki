@@ -31,9 +31,12 @@
 #include "gtest/gtest.h"
 #include "cryptonote_core/service_node_swarm.h"
 #include "cryptonote_basic/cryptonote_basic.h"
+#include "unit_tests_utils.h"
+#include "string_tools.h"
 
 #include <functional>
 #include <iterator>
+#include <fstream>
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "sn_unit_tests"
@@ -502,4 +505,107 @@ TEST(swarm_to_snodes, decommission)
   calc_swarm_changes(swarm_to_snodes, seed++);
   /// 1 swarm should have been decommissioned
   ASSERT_EQ(initial_num_swarms - 1, swarm_to_snodes.size());
+}
+
+struct swarm_event_t
+{
+  std::string id;
+  uint64_t block_height;
+  enum event_type { REG, DEREG};
+  event_type type;
+  std::string pubkey;
+};
+
+TEST(swarm_to_snodes, real_data_simulation)
+{
+  std::ifstream file;
+  file.open((unit_test::data_dir / "service_nodes_events.txt").string());
+  ASSERT_TRUE(file.is_open());
+  std::string line;
+  std::vector<swarm_event_t> events;
+  while(getline(file, line))
+  {
+    std::istringstream ss(line);
+    std::string block_height;
+    std::string operation;
+    std::string pubkey;
+    std::getline(ss, block_height, '\t');
+    std::getline(ss, operation, '\t');
+    std::getline(ss, pubkey, '\t');
+    std::string id = block_height + "-" + operation + "-" + pubkey;
+    uint64_t height = stol(block_height, nullptr, 10);
+    swarm_event_t::event_type type = operation == "registration" ? swarm_event_t::event_type::REG : swarm_event_t::event_type::DEREG;
+    events.push_back({id, height, type, pubkey});
+  }
+  std::sort(events.begin(), events.end(), [](const swarm_event_t& a, const swarm_event_t& b) {
+    return a.id < b.id;
+  } );
+  /// Filter out duplicates (?)
+  events.erase(std::unique(events.begin(),
+                          events.end(),
+                          [](const swarm_event_t& a, const swarm_event_t& b) {
+                            return a.id == b.id;
+                          })
+              , events.end());
+  std::cout << "filtered events " << events.size() << std::endl;
+
+  int seed = 42;
+  uint64_t current_height = 0;
+  size_t num_decommissions = 0;
+  size_t num_stealing = 0;
+  swarm_snode_map_t swarm_to_snodes;
+  for (const auto& event : events)
+  {
+    if (current_height != 0  && current_height != event.block_height)
+    {
+      const size_t original_size = swarm_to_snodes.size() - swarm_to_snodes.count(UNASSIGNED_SWARM_ID);
+      calc_swarm_changes(swarm_to_snodes, seed++, &num_stealing);
+      if (swarm_to_snodes.size() < original_size)
+        num_decommissions += original_size - swarm_to_snodes.size();
+    }
+
+    current_height = event.block_height;
+
+    crypto::public_key crypto_pubkey;
+    epee::string_tools::hex_to_pod(event.pubkey, crypto_pubkey);
+
+    auto find_swarm_for_pubkey = [](const crypto::public_key& pubkey, const swarm_snode_map_t& swarm_to_snode)
+    {
+      for (const auto& entry : swarm_to_snode)
+      {
+        const auto it = std::find(entry.second.begin(), entry.second.end(), pubkey);
+        if (it != entry.second.end())
+          return entry.first;
+      }
+      throw std::runtime_error("could not find pubkey in swarms");
+    };
+
+    if (event.type == swarm_event_t::event_type::REG)
+    {
+      swarm_to_snodes[UNASSIGNED_SWARM_ID].push_back(crypto_pubkey);
+    }
+    else
+    {
+      auto swarm_id = find_swarm_for_pubkey(crypto_pubkey, swarm_to_snodes);
+      auto& swarm = swarm_to_snodes[swarm_id];
+      swarm.erase(std::remove(swarm.begin(), swarm.end(), crypto_pubkey), swarm.end());
+    }
+  }
+  calc_swarm_changes(swarm_to_snodes, seed++, &num_stealing);
+  std::cout << "num decommissions: " << num_decommissions << std::endl;
+  std::cout << "num stealing: " << num_stealing << std::endl;
+  std::cout << "num swarms: " << swarm_to_snodes.size() << std::endl;
+
+  /// distribution
+  std::map<size_t, size_t> distribution;
+  size_t num_snodes = 0;
+  for (const auto& entry : swarm_to_snodes)
+  {
+    distribution[entry.second.size()]++;
+    num_snodes += entry.second.size();
+  }
+  for (const auto& dist : distribution)
+  {
+    std::cout << "size " << dist.first << ": " << dist.second << "(" << (dist.first * dist.second * 100 / num_snodes) << "%)" << std::endl;
+  }
 }

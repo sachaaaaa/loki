@@ -157,7 +157,7 @@ namespace service_nodes
     }
   }
 
-  void calc_swarm_changes(swarm_snode_map_t &swarm_to_snodes, uint64_t seed)
+  void calc_swarm_changes(swarm_snode_map_t &swarm_to_snodes, uint64_t seed, size_t* num_stealing)
   {
 
     if (swarm_to_snodes.size() == 0)
@@ -224,6 +224,8 @@ namespace service_nodes
           /// Add public key to poor swarm
           poor_swarm_snodes.push_back(excess_snode.public_key);
           LOG_PRINT_L2("Stolen 1 snode from " << excess_snode.public_key << " and donated to " << swarm.swarm_id);
+          if (num_stealing)
+            (*num_stealing)++;
         } while (poor_swarm_snodes.size() < MIN_SWARM_SIZE);
 
         /// If there is not enough excess for the current swarm,
