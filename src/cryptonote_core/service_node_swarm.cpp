@@ -11,15 +11,55 @@
 
 namespace service_nodes
 {
-  static uint64_t get_new_swarm_id(std::mt19937_64 &mt, const swarm_snode_map_t &swarm_to_snodes)
+  static uint64_t get_new_swarm_id(const swarm_snode_map_t &swarm_to_snodes)
   {
-    uint64_t id_new;
-    do
-    {
-      id_new = uniform_distribution_portable(mt, UINT64_MAX);
-    } while (swarm_to_snodes.count(id_new) != 0);
+    // UINT64_MAX is reserved for unassigned swarms
+    constexpr uint64_t MAX_ID = UINT64_MAX - 1;
 
-    return id_new;
+    if (swarm_to_snodes.empty()) return 0;
+    if (swarm_to_snodes.size() == 1) return MAX_ID / 2;
+
+    std::vector<swarm_id_t> all_ids;
+    for (const auto& entry : swarm_to_snodes) {
+      all_ids.push_back(entry.first);
+    }
+
+    std::sort(all_ids.begin(), all_ids.end());
+
+    uint64_t max_dist = 0;
+    // The new swarm that is the farthest from its right neighbour
+    uint64_t best_idx = 0;
+
+    for (auto idx = 0u; idx < all_ids.size() - 1; ++idx)
+    {
+      const uint64_t dist = all_ids[idx+1] - all_ids[idx];
+
+      if (dist > max_dist)
+      {
+        max_dist = dist;
+        best_idx = idx;
+      }
+    }
+
+    // Handle the special case involving the gap between the
+    // rightmost and the leftmost swarm due to wrapping.
+    // Note that we are adding 1 as we treat 0 and MAX_ID as *one* apart
+    const uint64_t dist = MAX_ID - all_ids.back() + all_ids.front() + 1;
+    if (dist > max_dist)
+    {
+      max_dist = dist;
+      best_idx = all_ids.size() - 1;
+    }
+
+    const uint64_t diff = max_dist / 2; /// how much to add to an existing id
+    const uint64_t to_max = MAX_ID - all_ids[best_idx]; /// how much we can add not overflow
+
+    if (diff > to_max)
+    {
+      return diff - to_max - 1; // again, assuming MAX_ID + 1 = 0
+    }
+
+    return all_ids[best_idx] + diff;
   }
 
   /// The excess is calculated as the total number of snodes above MIN_SWARM_SIZE across all swarms
@@ -115,7 +155,7 @@ namespace service_nodes
         new_swarm_snodes.push_back(random_excess_snode.public_key);
         remove_excess_snode_from_swarm(random_excess_snode, swarm_to_snodes);
       }
-      const auto new_swarm_id = get_new_swarm_id(mt, swarm_to_snodes);
+      const auto new_swarm_id = get_new_swarm_id(swarm_to_snodes);
       swarm_to_snodes.insert({new_swarm_id, std::move(new_swarm_snodes)});
       LOG_PRINT_L2("Created new swarm from excess: " << new_swarm_id);
     }
@@ -188,7 +228,7 @@ namespace service_nodes
     /// 0. Ensure there is always 1 swarm
     if (swarm_to_snodes.size() == 0)
     {
-      const auto new_swarm_id = get_new_swarm_id(mersenne_twister, {});
+      const auto new_swarm_id = get_new_swarm_id({});
       swarm_to_snodes.insert({new_swarm_id, {}});
       LOG_PRINT_L2("Created initial swarm " << new_swarm_id);
     }
