@@ -344,16 +344,18 @@ TEST(swarm_to_snodes, remove_excess_snode_from_swarm)
 
   /// when snode exists in swarm_to_snodes
   auto& excess_snode = pool_snodes[0];
-  ASSERT_TRUE(remove_excess_snode_from_swarm(excess_snode, swarm_to_snodes));
+  remove_excess_snode_from_swarm(excess_snode, swarm_to_snodes);
   /// should be removed from first swarm
   ASSERT_TRUE(std::find(first_swarm.begin(), first_swarm.end(), excess_snode.public_key) == first_swarm.end());
+  /// first swarm has one snode less
+  ASSERT_EQ(5, swarm_to_snodes[0].size());
   /// other swarms untouched
   ASSERT_EQ(5, swarm_to_snodes[1].size());
   ASSERT_EQ(5, swarm_to_snodes[2].size());
 
   /// when snode doesn't exist in swarm_to_snodes
   const excess_pool_snode new_snode = {newPubKey(), 2};
-  ASSERT_FALSE(remove_excess_snode_from_swarm(new_snode, swarm_to_snodes));
+  remove_excess_snode_from_swarm(new_snode, swarm_to_snodes);
   /// other swarms untouched
   ASSERT_EQ(5, swarm_to_snodes[0].size());
   ASSERT_EQ(5, swarm_to_snodes[1].size());

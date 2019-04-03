@@ -54,12 +54,10 @@ namespace service_nodes
     return excess_pool.at(idx);
   }
 
-  prod_static bool remove_excess_snode_from_swarm(const excess_pool_snode& excess_snode, swarm_snode_map_t &swarm_to_snodes)
+  prod_static void remove_excess_snode_from_swarm(const excess_pool_snode& excess_snode, swarm_snode_map_t &swarm_to_snodes)
   {
     auto &swarm_sn_vec = swarm_to_snodes.at(excess_snode.swarm_id);
-    const size_t original_size = swarm_sn_vec.size();
     swarm_sn_vec.erase(std::remove(swarm_sn_vec.begin(), swarm_sn_vec.end(), excess_snode.public_key), swarm_sn_vec.end());
-    return original_size != swarm_sn_vec.size();
   }
 
   prod_static void get_excess_pool(size_t threshold, const swarm_snode_map_t& swarm_to_snodes, std::vector<excess_pool_snode>& pool_snodes, size_t& excess)
@@ -97,16 +95,16 @@ namespace service_nodes
     if (has_starving_swarms)
       return;
 
+    std::vector<excess_pool_snode> pool_snodes;
+    std::vector<crypto::public_key> new_swarm_snodes;
+    new_swarm_snodes.reserve(NEW_SWARM_SIZE);
+
     while (calc_excess(swarm_to_snodes) >= calc_threshold(swarm_to_snodes))
     {
       LOG_PRINT_L2("New swarm creation");
-      std::vector<crypto::public_key> new_swarm_snodes;
-
-      new_swarm_snodes.reserve(NEW_SWARM_SIZE);
 
       while (new_swarm_snodes.size() < NEW_SWARM_SIZE)
       {
-        std::vector<excess_pool_snode> pool_snodes;
         size_t excess;
         get_excess_pool(EXCESS_BASE, swarm_to_snodes, pool_snodes, excess);
         if (pool_snodes.size() == 0)
@@ -119,6 +117,7 @@ namespace service_nodes
         remove_excess_snode_from_swarm(random_excess_snode, swarm_to_snodes);
       }
       const auto new_swarm_id = get_new_swarm_id(mt, swarm_to_snodes);
+      /// No need to clear new_swarm_snodes since it got moved.
       swarm_to_snodes.insert({new_swarm_id, std::move(new_swarm_snodes)});
       LOG_PRINT_L2("Created new swarm from excess: " << new_swarm_id);
     }
