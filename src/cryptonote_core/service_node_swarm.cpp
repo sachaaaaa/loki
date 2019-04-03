@@ -20,6 +20,7 @@ namespace service_nodes
     if (swarm_to_snodes.size() == 1) return MAX_ID / 2;
 
     std::vector<swarm_id_t> all_ids;
+    all_ids.reserve(swarm_to_snodes.size());
     for (const auto& entry : swarm_to_snodes) {
       all_ids.push_back(entry.first);
     }
