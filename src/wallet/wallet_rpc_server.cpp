@@ -2439,6 +2439,126 @@ namespace tools
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_get_transfers_csv(const wallet_rpc::COMMAND_RPC_GET_TRANSFERS_CSV::request& req, wallet_rpc::COMMAND_RPC_GET_TRANSFERS_CSV::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    wallet_rpc::COMMAND_RPC_GET_TRANSFERS::response response;
+    if (!on_get_transfers(req, response, er, ctx))
+    {
+      return false;
+    }
+
+    std::stringstream output;
+    output << boost::format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\r\n")
+      % tr("block")
+      % tr("type")
+      % tr("lock")
+      % tr("timestamp")
+      % tr("amount")
+      % tr("running balance")
+      % tr("hash")
+      % tr("payment ID")
+      % tr("fee")
+      % tr("destination")
+      % tr("amount")
+      % tr("index")
+      % tr("note");
+
+    uint64_t running_balance = 0;
+    auto formatter = boost::format("%llu,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'%s',%s\r\n");
+
+    // aggregate all transfer references into one vector for sorting
+    using transfer_ref = std::reference_wrapper<wallet_rpc::transfer_entry>;
+    std::vector<transfer_ref> all_transfers;
+    all_transfers.insert(all_transfers.begin(), response.in.begin(), response.in.end());
+    all_transfers.insert(all_transfers.begin(), response.out.begin(), response.out.end());
+    all_transfers.insert(all_transfers.begin(), response.pending.begin(), response.pending.end());
+    all_transfers.insert(all_transfers.begin(), response.failed.begin(), response.failed.end());
+    all_transfers.insert(all_transfers.begin(), response.pool.begin(), response.pool.end());
+    std::sort(all_transfers.begin(), all_transfers.end(),
+      [](const transfer_ref& a, const transfer_ref& b) {
+        return a.get().timestamp < b.get().timestamp;
+      });
+
+    for (const auto& transfer_ref : all_transfers)
+    {
+      const auto& transfer = transfer_ref.get();
+      if (transfer.type == pay_type_string(tools::pay_type::in) ||
+          transfer.type == pay_type_string(tools::pay_type::miner) ||
+          transfer.type == pay_type_string(tools::pay_type::service_node) ||
+          transfer.type == pay_type_string(tools::pay_type::governance))
+      {
+        running_balance += transfer.amount;
+      }
+      else if (transfer.type == pay_type_string(tools::pay_type::stake))
+      {
+        running_balance -= transfer.fee;
+      }
+      else if (transfer.type == pay_type_string(tools::pay_type::out))
+      {
+        running_balance -= transfer.amount + transfer.fee;
+      }
+      else
+      {
+          std::cout << tr("Warning: Unhandled pay type, this is most likely a developer error, please report it to the Loki developers.");
+      }
+
+      std::string lock_msg;
+      if (transfer.type == "in")
+      {
+        const bool unlocked = m_wallet->is_transfer_unlocked(transfer.unlock_time, transfer.height);
+        lock_msg = unlocked ? "unlocked" : "locked";
+      }
+
+      std::string indexes;
+      for (const auto& subaddr_i : transfer.subaddr_indices)
+      {
+        indexes += std::to_string(subaddr_i.minor) + ",";
+      }
+      // remove trailing ","
+      if (indexes.size())
+      {
+        indexes.pop_back();
+      }
+
+      output << formatter
+        % transfer.height
+        % transfer.type
+        % lock_msg
+        % tools::get_human_readable_timestamp(transfer.timestamp)
+        % cryptonote::print_money(transfer.amount)
+        % cryptonote::print_money(running_balance)
+        % transfer.txid
+        % transfer.payment_id
+        % cryptonote::print_money(transfer.fee)
+        % (transfer.destinations.size() ? transfer.destinations.front().address : "-")
+        % (transfer.destinations.size() ? cryptonote::print_money(transfer.destinations.front().amount) : "")
+        % indexes
+        % transfer.note;
+
+      // print subsequent destination addresses and amounts
+      // (start at begin + 1 with std::next)
+      for (auto it = std::next(transfer.destinations.cbegin()); it != transfer.destinations.cend(); ++it)
+      {
+        output << formatter
+          % ""
+          % ""
+          % ""
+          % ""
+          % ""
+          % ""
+          % ""
+          % ""
+          % ""
+          % it->address
+          % cryptonote::print_money(it->amount)
+          % ""
+          % "";
+      }
+    }
+    res.csv = output.str();
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool wallet_rpc_server::on_get_transfer_by_txid(const wallet_rpc::COMMAND_RPC_GET_TRANSFER_BY_TXID::request& req, wallet_rpc::COMMAND_RPC_GET_TRANSFER_BY_TXID::response& res, epee::json_rpc::error& er, const connection_context *ctx)
   {
     if (!m_wallet) return not_open(er);

@@ -1666,6 +1666,23 @@ namespace wallet_rpc
   };
 
   LOKI_RPC_DOC_INTROSPECT
+  // Returns a string with the transfers formatted as csv
+  struct COMMAND_RPC_GET_TRANSFERS_CSV
+  {
+    typedef epee::misc_utils::struct_init<COMMAND_RPC_GET_TRANSFERS::request_t> request;
+
+    struct response_t
+    {
+      std::string csv;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(csv);
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  LOKI_RPC_DOC_INTROSPECT
   // Show information about a transfer to/from this address.
   struct COMMAND_RPC_GET_TRANSFER_BY_TXID
   {
