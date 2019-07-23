@@ -36,6 +36,7 @@
 #include "cryptonote_basic/subaddress_index.h"
 #include "crypto/hash.h"
 #include "wallet_rpc_server_error_codes.h"
+#include "wallet2.h"
 
 #include "common/loki.h"
 
@@ -1454,6 +1455,34 @@ namespace wallet_rpc
   // 
   struct transfer_entry
   {
+    transfer_entry() = default;
+    transfer_entry(const wallet2::transfer_view& transfer)
+      : txid(std::move(transfer.txid))
+      , payment_id(std::move(transfer.payment_id))
+      , height(std::move(transfer.height))
+      , timestamp(std::move(transfer.timestamp))
+      , amount(std::move(transfer.amount))
+      , fee(std::move(transfer.fee))
+      , note(std::move(transfer.note))
+      // destinations
+      , type(tools::pay_type_string(transfer.type))
+      , unlock_time(std::move(transfer.unlock_time))
+      , subaddr_index(std::move(transfer.subaddr_index))
+      , subaddr_indices(std::move(transfer.subaddr_indices))
+      , address(std::move(transfer.address))
+      , double_spend_seen(transfer.double_spend_seen)
+      , confirmations(std::move(transfer.confirmations))
+      , suggested_confirmations_threshold(std::move(transfer.suggested_confirmations_threshold))
+    {
+      if (transfer.block.type() == typeid(std::string))
+      {
+          type = boost::get<std::string>(transfer.block);
+      }
+      for (const auto& dest : transfer.destinations)
+      {
+        destinations.push_back({std::move(dest.amount), std::move(dest.address)});
+      }
+    }
     std::string txid;                                          // Transaction ID for this transfer.
     std::string payment_id;                                    // Payment ID for this transfer.
     uint64_t height;                                           // Height of the first block that confirmed this transfer (0 if not mined yet).
